@@ -113,6 +113,25 @@
   }
   .rollbtn:active{transform:scale(.97); background:var(--accent2);}
   .rollbtn:disabled{opacity:.6; cursor:default;}
+  .matchrow{
+    display:flex; align-items:center; justify-content:space-between;
+    height:30px; margin:-6px 0 14px; font-size:.95rem; color:var(--muted);
+  }
+  .matchrow.hidden{visibility:hidden; pointer-events:none;}
+  .dicegroup{
+    position:relative; display:flex; align-items:center; justify-content:center;
+    gap:18px; flex-wrap:wrap; padding:14px 22px;
+  }
+  .dicegroup::after{
+    content:''; position:absolute; inset:0; border-radius:999px;
+    border:3px solid #fbbf24; opacity:0; pointer-events:none;
+    box-shadow:0 0 14px 3px rgba(251,191,36,.75), inset 0 0 14px 2px rgba(251,191,36,.45);
+  }
+  .dicegroup.match::after{animation:matchblink 1.5s ease-in-out 1 forwards;}
+  @keyframes matchblink{
+    0%{opacity:0;} 10%{opacity:1;} 25%{opacity:.1;} 40%{opacity:1;}
+    55%{opacity:.1;} 70%{opacity:1;} 100%{opacity:1;}
+  }
   .wakerow{
     display:flex; align-items:center; justify-content:space-between;
     margin-top:18px; padding-top:16px; border-top:1px solid var(--border);
@@ -149,6 +168,10 @@
   .histlist li .nr{color:var(--muted); font-size:.8rem; min-width:22px;}
   .histlist li .dice{display:flex; gap:5px; align-items:center;}
   .histlist li .sum{font-weight:700; font-size:1rem; min-width:30px; text-align:right;}
+  .histlist li .dice.glow{
+    padding:3px 9px; border-radius:999px; border:2px solid #fbbf24;
+    box-shadow:0 0 8px 1px rgba(251,191,36,.7), inset 0 0 6px 1px rgba(251,191,36,.35);
+  }
   .histempty{color:var(--muted); font-size:.9rem; text-align:center; padding:20px 0;}
   .modal{
     position:fixed; inset:0; background:rgba(0,0,0,.5); display:none;
@@ -190,6 +213,11 @@
     <button data-count="3"><div class="minidie"><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip on"></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div></div><div class="minidie"><div class="minipip on"></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip on"></div></div><div class="minidie"><div class="minipip on"></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip on"></div><div class="minipip "></div><div class="minipip "></div><div class="minipip "></div><div class="minipip on"></div></div></button>
   </div>
 
+  <div class="matchrow" id="matchRow">
+    <div class="wakelabel">✨ Markera tärningar lika</div>
+    <div class="switch" id="matchSwitch"></div>
+  </div>
+
   <div class="stage" id="stage"></div>
 
   <div class="sumrow" id="sumrow">Kasta för att börja</div>
@@ -204,7 +232,7 @@
 
 <footer>
   <button class="sharebtn" id="shareBtn">📤 Dela app</button>
-  <div id="versionLabel">v1.08 · © 2026 Per Andersson</div>
+  <div id="versionLabel">v1.10 · © 2026 Per Andersson</div>
 </footer>
 
 <div class="modal" id="qrModal">
@@ -254,7 +282,7 @@
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = "1.08";
+const APP_VERSION = "1.10";
 
 // ---------- Tema ----------
 const themeBtn = document.getElementById('themeBtn');
@@ -266,6 +294,25 @@ function applyTheme(t){
 applyTheme(localStorage.getItem('tarning_theme') || (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark':'light'));
 themeBtn.addEventListener('click', ()=>{
   applyTheme(document.body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark');
+});
+
+// ---------- Markera lika ----------
+const matchSwitch = document.getElementById('matchSwitch');
+const matchRow = document.getElementById('matchRow');
+let matchOn = localStorage.getItem('tarning_match') === '1';
+matchSwitch.classList.toggle('on', matchOn);
+function updateMatchRow(){
+  matchRow.classList.toggle('hidden', diceCount !== 2);
+}
+function clearMatch(){
+  const g = stage.querySelector('.dicegroup');
+  if(g) g.classList.remove('match');
+}
+matchSwitch.addEventListener('click', ()=>{
+  matchOn = !matchOn;
+  localStorage.setItem('tarning_match', matchOn ? '1':'0');
+  matchSwitch.classList.toggle('on', matchOn);
+  if(!matchOn) clearMatch();
 });
 
 // ---------- Tärningsval ----------
@@ -298,12 +345,16 @@ function dieFaceHTML(value){
 const stage = document.getElementById('stage');
 function buildStage(values){
   stage.innerHTML = '';
+  const group = document.createElement('div');
+  group.className = 'dicegroup';
   values.forEach(v=>{
     const die = document.createElement('div');
     die.className = 'die';
     die.innerHTML = dieFaceHTML(v);
-    stage.appendChild(die);
+    group.appendChild(die);
   });
+  stage.appendChild(group);
+  updateMatchRow();
 }
 buildStage(Array(diceCount).fill(1));
 
@@ -317,10 +368,10 @@ function miniDieHTML(val){
   return `<div class="minidie">${cells}</div>`;
 }
 
-function addHistory(values, sum){
+function addHistory(values, sum, match){
   const now = new Date();
   const time = now.toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'});
-  history.unshift({values, sum, time});
+  history.unshift({values, sum, time, match: !!match});
   if(history.length > MAX_HIST) history = history.slice(0, MAX_HIST);
   localStorage.setItem('tarning_hist', JSON.stringify(history));
 }
@@ -334,7 +385,7 @@ function renderHistory(){
   const items = history.map((h,i)=>
     `<li>
       <span class="nr">${i+1}</span>
-      <span class="dice">${h.values.map(v=>miniDieHTML(v)).join('')}</span>
+      <span class="dice${h.match ? ' glow' : ''}">${h.values.map(v=>miniDieHTML(v)).join('')}</span>
       <span style="color:var(--muted);font-size:.8rem">${h.time}</span>
       <span class="sum">${h.sum}</span>
     </li>`
@@ -369,7 +420,9 @@ function roll(){
   rolling = true;
   rollBtn.disabled = true;
   sumrow.textContent = '...';
-  const dieEls = [...stage.children];
+  clearMatch();
+  const group = stage.querySelector('.dicegroup');
+  const dieEls = [...group.children];
   const durArr = new Uint32Array(1);
   crypto.getRandomValues(durArr);
   const duration = 1800 + (durArr[0] % 400);
@@ -393,7 +446,9 @@ function roll(){
     sumrow.innerHTML = finalValues.length > 1
       ? `${finalValues.join(' + ')} = <b>${sum}</b>`
       : `Du fick <b>${sum}</b>`;
-    addHistory(finalValues, sum);
+    const isMatch = matchOn && finalValues.length === 2 && finalValues[0] === finalValues[1];
+    addHistory(finalValues, sum, isMatch);
+    if(isMatch) group.classList.add('match');
     rolling = false;
     rollBtn.disabled = false;
   }, duration);
